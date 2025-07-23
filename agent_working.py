@@ -19,11 +19,8 @@ host = "139.91.80.170" #host.docker.internal
 port = 3306 
 database = "berth_allocation_v2"
 
-<<<<<<< HEAD
 # api key in .env
 
-=======
->>>>>>> c0ac93fa12217d682e3a6824f6e52182a612384c
 connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 
 max = 8000 # fixed
