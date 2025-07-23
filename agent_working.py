@@ -15,7 +15,7 @@ from langchain.memory import ConversationBufferMemory
 
 username = "root"
 password = ""
-host = "127.0.0.1" #host.docker.internal
+host = "139.91.80.170" #host.docker.internal
 port = 3306 
 database = "berth_allocation_v2"
 
