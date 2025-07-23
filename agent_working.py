@@ -19,8 +19,6 @@ host = "host.docker.internal" #host.docker.internal
 port = 3306 
 database = "berth_allocation_v2"
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCmnLm9bQrGvMZXN9yM7E8aMI7YKvmy3Dc"
-
 connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 
 max = 8000 # fixed
