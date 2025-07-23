@@ -1,0 +1,7 @@
+chainlit
+rapidfuzz
+langchain
+langchain_community
+langchain_google_genai
+langchain_experimental
+pymysql
