@@ -19,7 +19,7 @@ host = "host.docker.internal" #host.docker.internal
 port = 3306 
 database = "berth_allocation_v2"
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCmnLm9bQrGvMZXN9yM7E8aMI7YKvmy3Dc"
+# api key in .env
 
 connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 
@@ -57,7 +57,7 @@ def resolve_ship_name_tool(question: str) -> str:
     result = process.extractOne(
         query=question_upper,
         choices=all_ships,
-        scorer=fuzz.partial_ratio,
+        scorer=fuzz.token_set_ratio,
         score_cutoff=score_cutoff
     )
 
@@ -131,8 +131,8 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             
             Do NOT reverse the join direction unless asked for ship metadata.
             
-            - When users mention a ship name, use the 'resolve_ship_name_tool' to map the name to a known ship.
-            - If the tool returns a ship name, always ask the user first if that is the ship they are referring to, UNLESS it returns an 'exact match', so you can use that name in SQL queries.
+            - When users mention a ship name, ALWAYS use the 'resolve_ship_name_tool' to map the name to a known ship.
+            - If the tool returns a ship name, AWLAYS ask the user first if that is the ship they are referring to, UNLESS the resolve_ship_name_tool EXPLICITLY returns 'exact match', so you can use that name in SQL queries.
                 - If the user's answer confirms the ship name, use that name in SQL queries
                 - Else, ask the user to give the ship name they want.
             - If the tool returns an empty string, inform the user the ship is not registered.
@@ -158,7 +158,8 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
                 
             **Only apply this logic if the user is asking whether a ship *can be scheduled* on a specific date (e.g. "Can we bring", "Is it possible to add", "Can we fit", etc).**
     
-            **If the user is asking whether a ship *will be* on a date (e.g. "Will [ship] be here", "Is [ship] arriving", etc), simply check whether the ship is already scheduled for that date using the approach_request table, and skip all decision logic and capacity lookup.**
+            **If the user is asking whether a ship *will be* on a date (e.g. "Will [ship] be here", "Is [ship] arriving", etc), simply check whether the ship is already scheduled for that date using the approach_request table, and skip all decision logic and capacity lookup.
+            ALWAYS compare requested_start_date to the given date, using DATE(requested_start_date)**
             **If you CAN'T find the ship in the database IMMEDIATELY respond clearly that the ship is not registered.**
                     
             ## If the user asks which dates in a range (e.g., a month) a ship can be accepted:
