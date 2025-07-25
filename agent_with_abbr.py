@@ -1,6 +1,7 @@
-import os
 import traceback
+import os
 import pymysql
+import json
 from datetime import datetime
 from rapidfuzz import process, fuzz
 from langchain_community.utilities import SQLDatabase
@@ -26,6 +27,22 @@ connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{datab
 max = 8000 # fixed
 
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+abbreviations = {}
+
+def load_abbrev_store(file_path="/app/data/abbreviations.json"):
+    global abbreviations
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Creates /app/data if needed
+    print("IN LOAD !!!")
+    try:
+        with open(file_path, "r") as f:
+            abbreviations = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        abbreviations = {}
+        
+load_abbrev_store()
+
+# ====================== FUZZY MATCHING TOOLS =====================================
 
 # Helper to fetch all ship names once
 def fetch_all_ship_names():
@@ -67,11 +84,49 @@ def resolve_ship_name_tool(question: str) -> str:
 
     return ""
 
+
+
+# ================================= ABBREV TOOLS ================================================
+
+
+def save_abbrev_store(file_path="/app/data/abbreviations.json"):
+    with open(file_path, "w") as f:
+        json.dump(abbreviations, f)
+        print("SAVED ABBREV!")
+
+def get_ship_from_abbrev(abbrev: str) -> str:
+    return abbreviations.get(abbrev.upper(), "UNKNOWN")
+
+
+def store_abbrev(input_str: str) -> str:
+    try:
+        abbrev, full_name = map(str.strip, input_str.split("=", 1))
+        abbreviations[abbrev.upper()] = full_name.upper()
+        save_abbrev_store()
+        return f"Stored abbreviation: {abbrev.upper()} = {full_name.upper()}"
+    except Exception:
+        return "Format should be: abbreviation = full name"
+
+abbrev_lookup_tool = Tool(
+    name="abbrev_lookup",
+    func=get_ship_from_abbrev,
+    description="Retrieves the full ship name given an abbreviation like 'ETS'. Returns 'UNKNOWN' if not found."
+)
+
+abbrev_store_tool = Tool(
+    name="abbrev_store",
+    func=store_abbrev,
+    description="Stores a new abbreviation for a ship. Format must be like 'ETS = Explorer of the Seas'."
+)
+
+
+# =================================================================================================================
+
 def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
     try:
         db = SQLDatabase.from_uri(connection_string)
         print("Connected.")
-
+        
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
@@ -84,7 +139,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             description="Useful for answering questions that require simple math or calculations.",
         )
         
-        tools = sql_tools + [calculator_tool] + [resolve_ship_name_tool]
+        tools = sql_tools + [calculator_tool] + [resolve_ship_name_tool] + [abbrev_lookup_tool] + [abbrev_store_tool]
         
         tool_names = ", ".join([tool.name for tool in tools])
         
@@ -131,6 +186,16 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             
             Do NOT reverse the join direction unless asked for ship metadata.
             
+            - If a user uses an abbreviation like "ETS", and you cannot match it directly in the database, use the 'abbrev_lookup' tool to try resolving it.
+                - If the result is 'UNKNOWN', ask the user for clarification.
+            - When the user provides a definition like 'ETS means Explorer of the Seas', use the 'abbrev_store' tool with the input: 'ETS = Explorer of the Seas'.
+            - Then retry the query using the resolved full name.
+            
+            **IMPORTANT**: If you learn a new ship abbreviation from the user, acknowledge it and say:
+            "Got it! From now on, I'll understand that '[abbr]' means '[Full Ship Name]'."
+            ONLY say it when a NEW abbreviation is stored, NOT when you retrieve an existing one.
+
+            
             - When users mention a ship name, ALWAYS use the 'resolve_ship_name_tool' to map the name to a known ship.
             - Unless the tool returns an "exact match", ALWAYS ask the user to confirm if that's the ship they are referring to, EVEN IF it returned "fuzzy match (score=100.0)". 
                 - If the user's answer confirms the ship name, use that name in SQL queries
@@ -146,6 +211,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
                 4. **Use the fixed max passenger threshold: max=8000**
                 
                 ** Important: if the ship is ALREADY confirmed for that date (in the approach_request for that specific date), answer that it is already scheduled.**
+                **ALWAYS use DATE(requested_start_date) to compare requested_start_date to the given date.**
                 
                 **If your final answer is NEGATIVE, list the total sum of passengers that you calculated.**
                 
@@ -210,7 +276,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             13. **Always check if the ship name the user gives exists in the 'vessel' table. If not found, respond clearly that the ship is not registered.**
             14. **Always look for confirmed_approach and ensure it's 1.** Ignore the ship if it's confirmed_approach is 0.
             15. **Always end your response with asking the user if they want further assistance.**
-            16. **At the end of every final answer, include this sentence:**
+            16. **At the end of every final answer ONLY regarding ship schedules, include this sentence:**
                 "To confirm this result or see more details, you can visit: https://www.santoriniports.gov.gr/el/cruise"
                 **Always include this line at the very end of your response, just before asking if the user needs further assistance.**
 

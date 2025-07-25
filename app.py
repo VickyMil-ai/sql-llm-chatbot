@@ -1,6 +1,6 @@
 import chainlit as cl
 from chainlit import on_chat_start
-from agent_working import get_mysql_agent_response, memory
+from agent_with_abbr import get_mysql_agent_response, memory
 import asyncio
 
 @on_chat_start
