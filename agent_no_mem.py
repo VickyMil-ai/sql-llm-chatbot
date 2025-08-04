@@ -1,9 +1,11 @@
 import traceback
 import os
+from dotenv import load_dotenv
 import pymysql
 import json
 from datetime import datetime
 from rapidfuzz import process, fuzz
+from collections import defaultdict
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -16,23 +18,23 @@ from langchain.memory import ConversationBufferMemory
 
 username = "root"
 password = ""
-host = "host.docker.internal" #host.docker.internal
+host = "127.0.0.1" #host.docker.internal
 port = 3306 
 database = "berth_allocation_v2"
 
-# api key in .env
+load_dotenv() 
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 
 max = 8000 # fixed
 
-memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-
 abbreviations = {}
 
-def load_abbrev_store(file_path="/app/data/abbreviations.json"):
+def load_abbrev_store(file_path="abbreviations.json"):
     global abbreviations
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Creates /app/data if needed
+    #os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Creates /app/data if needed
     print("IN LOAD !!!")
     try:
         with open(file_path, "r") as f:
@@ -56,15 +58,34 @@ def fetch_all_ship_names():
 
 ALL_SHIP_NAMES = fetch_all_ship_names()
 
+
+word_to_ships = defaultdict(list)
+
+for name in ALL_SHIP_NAMES:
+    for word in name.lower().split():
+        word_to_ships[word].append(name)
+
+
+
 @tool
 def resolve_ship_name_tool(question: str) -> str:
     """
-    Given a user question, returns the best matching ship name using fuzzy matching against known ships.
+    Given a user question, returns the best matching ship name using fuzzy matching and unique word matching against known ships.
     Only returns a ship name if the fuzzy score is >= 70. Returns an empty string otherwise.
     """
     question_upper = question.upper()
     all_ships = ALL_SHIP_NAMES
     score_cutoff=70
+    word = question.lower().strip()
+    
+    
+    # check for unique words
+    matching_ships = word_to_ships.get(word, [])
+    if len(matching_ships) == 1:
+        matched_ship = matching_ships[0]
+        abbreviations[word.upper()] = matched_ship.upper()
+        save_abbrev_store()
+        return matched_ship, "unique ship match"
     
     for ship in all_ships:
         if ship.upper() in question_upper:
@@ -83,13 +104,12 @@ def resolve_ship_name_tool(question: str) -> str:
         return best_match, f"fuzzy match (score={score:.1f})"
 
     return ""
-
-
+        
 
 # ================================= ABBREV TOOLS ================================================
 
 
-def save_abbrev_store(file_path="/app/data/abbreviations.json"):
+def save_abbrev_store(file_path="abbreviations.json"):
     with open(file_path, "w") as f:
         json.dump(abbreviations, f)
         print("SAVED ABBREV!")
@@ -124,6 +144,9 @@ abbrev_store_tool = Tool(
 
 def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
     try:
+        print(f"[IN GET] Type of memory before agent call: {type(memory)}")
+        print(f"[IN GET] Value of memory before agent call: {memory}")
+        
         db = SQLDatabase.from_uri(connection_string)
         print("Connected.")
         
@@ -197,7 +220,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
 
             
             - When users mention a ship name, ALWAYS use the 'resolve_ship_name_tool' to map the name to a known ship.
-            - Unless the tool returns an "exact match", ALWAYS ask the user to confirm if that's the ship they are referring to, EVEN IF it returned "fuzzy match (score=100.0)". 
+            - Unless the tool returns an "exact match" or a "unique ship match", ALWAYS ask the user to confirm if that's the ship they are referring to, EVEN IF it returned "fuzzy match (score=100.0)". 
                 - If the user's answer confirms the ship name, use that name in SQL queries
                 - Else, ask the user to give the ship name they want.
             - If the tool returns an empty string, inform the user the ship is not registered.
@@ -210,7 +233,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
                 3. **Get the total sum of "approach_passengers" scheduled for the same date from the "approach_request" table.**
                 4. **Use the fixed max passenger threshold: max=8000**
                 
-                ** Important: if the ship is ALREADY confirmed for that date (in the approach_request for that specific date), answer that it is already scheduled.**
+                **Important: ALWAYS check if the ship is ALREADY scheduled for that date (in the approach_request for that specific date). If it is, answer that it is already scheduled.**
                 **ALWAYS use DATE(requested_start_date) to compare requested_start_date to the given date.**
                 
                 **If your final answer is NEGATIVE, list the total sum of passengers that you calculated.**
@@ -275,8 +298,9 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             12. **Always present the result in the form of natural conversation**.
             13. **Always check if the ship name the user gives exists in the 'vessel' table. If not found, respond clearly that the ship is not registered.**
             14. **Always look for confirmed_approach and ensure it's 1.** Ignore the ship if it's confirmed_approach is 0.
-            15. **Always end your response with asking the user if they want further assistance.**
-            16. **At the end of every final answer ONLY regarding ship schedules, include this sentence:**
+            15. **Always use the 'resolve_ship_name_tool' to map the name to a known ship. Ask the user for clarification STRICTLY when the result is NOT "exaxt match" or "unique ship match"**.
+            16. **Always end your response with asking the user if they want further assistance.**
+            17. **At the end of every final answer ONLY regarding ship schedules, include this sentence:**
                 "To confirm this result or see more details, you can visit: https://www.santoriniports.gov.gr/el/cruise"
                 **Always include this line at the very end of your response, just before asking if the user needs further assistance.**
 
@@ -346,8 +370,13 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             else:
                 print(f"{msg.type.capitalize()}: {msg.content}")
         print("====================\n")
-
         
+        # output = response["output"]
+        # if not isinstance(output, str):
+        #     output = str(output)
+        # return output
+
+        print(response["output"])
         return response["output"]
 
 
