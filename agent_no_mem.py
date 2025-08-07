@@ -267,17 +267,17 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
 
                 4. For each date:
                     - If it was returned by the SQL query use the `python_calculator` tool with a single expression:
-                        - `print((8000 - total_passengers) > (0.8 * capacity))`
-                    - If it was **not** returned assume the result is `"True"` (since 0 passengers), and do **not** use the calculator.
+                        - print("Yes" if (8000 - total) > (0.8 * capacity) else "No" if (total + capacity) > (8800) else "Refer")
+                    - If it was **not** returned assume the result is "Yes" (since 0 passengers), and do **not** use the calculator.
 
-                5. Collect all dates that returned `"True"` from the logic above.
+                5. Collect all dates that returned "Yes" or "Refer" from the logic above, and respond accordingly based on the decision rules.
 
                 6. If **all days** in the user's requested range are allowed, respond that the ship can be scheduled on **all dates**.
                 Otherwise, list the acceptable dates.
 
                 DO NOT run the same query repeatedly for each day.
                 DO NOT query dates not returned by the SQL query.
-                DO NOT use the calculator tool for days with 0 passengers, just assume "True".
+                DO NOT use the calculator tool for days with 0 passengers, just assume "Yes".
 
 
             **You MUST evaluate these expressions using the "python_calculator" tool, NOT on your own.**

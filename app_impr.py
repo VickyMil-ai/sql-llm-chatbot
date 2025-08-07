@@ -28,9 +28,13 @@ def bot(history, memory):
 
 with gr.Blocks(theme="soft") as demo:
     gr.Markdown("## Santorini Cruise Chatbot")
-    gr.Markdown("Ask me anything about cruise ship schedules in Santorini!")
+    # gr.Markdown("Ask me anything about cruise ship schedules in Santorini!")
 
-    chatbot = gr.Chatbot(type='messages')
+    chatbot = gr.Chatbot(
+        type='messages',
+        show_copy_button=True,
+        placeholder="Ask me anything about cruise ship schedules in Santorini!"
+    )
     state = gr.State([])  # history
     memory_state = gr.State(None)  # ConversationBufferMemory
 
