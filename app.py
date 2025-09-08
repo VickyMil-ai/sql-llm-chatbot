@@ -1,15 +1,13 @@
 import gradio as gr
-from agent_impr import get_mysql_agent_response
+from working_agent import get_mysql_agent_response
 from langchain.memory import ConversationBufferMemory
 
-# Step 1: Append user message immediately
 def user(user_input, history):
     if history is None:
         history = []
     history.append({"role": "user", "content": user_input})
     return history, ""  # update chatbot and clear input box
 
-# Step 2: Generate assistant response
 def bot(history, memory):
     user_input = history[-1]["content"]
 
