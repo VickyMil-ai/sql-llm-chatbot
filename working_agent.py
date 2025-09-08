@@ -19,12 +19,12 @@ from langdetect import detect
 
 username = "root"
 password = ""
-host = "127.0.0.1" #host.docker.internal
+host = "127.0.0.1"
 port = 3306 
 database = "berth_allocation_v2"
 
-load_dotenv() 
-
+load_dotenv()
+# apo edw pairnei to API key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 connection_string = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
@@ -35,7 +35,6 @@ abbreviations = {}
 
 def load_abbrev_store(file_path="abbreviations.json"):
     global abbreviations
-    #os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Creates /app/data if needed
     #print("IN LOAD !!!")
     try:
         with open(file_path, "r") as f:
@@ -47,7 +46,7 @@ load_abbrev_store()
 
 # ====================== FUZZY MATCHING TOOLS =====================================
 
-# Helper to fetch all ship names once
+# helper to fetch all ship names once
 def fetch_all_ship_names():
     conn = pymysql.connect(host=host, user=username, password=password, db=database)
     try:
@@ -65,7 +64,6 @@ word_to_ships = defaultdict(list)
 for name in ALL_SHIP_NAMES:
     for word in name.lower().split():
         word_to_ships[word].append(name)
-
 
 
 @tool
@@ -192,8 +190,8 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             While strictly following the rules below, you should also vary your phrasing and style of your responses. Do not keep the same tone all the time.
 
             Use the lang_detect tool to detect the language of each user message and respond in that language.
-            Your final answer should be in 'el' (Greek) ONLY when lang_detect returns 'el'. 
-            Otherwise your final answer must be in 'en' (English).
+            Your final answer should be in 'el' (Greek) when lang_detect returns 'el'. Do NOT use 'en' (English) if lang_detect returns 'el'.
+            Otherwise, when lang_detect does NOT return 'el', your final answer must be in 'en' (English).
             
             You should only answer questions about the arrival possibility of new arrivals in Santorini's plans as well as questions about current plans.
             You do NOT answer questions about time schedules, ship capacity, passenger information or other unrelated stuff. In that case, state clearly and politely to the user that you are not trained to give that information.
@@ -245,7 +243,7 @@ def get_mysql_agent_response(question: str, memory: ConversationBufferMemory):
             If the user provides a date without a year (e.g., "July 25" or "25th July"):
             Search the approach_request table for all years from {year} onward where that date (same month and day) exists with confirmed requests (confirmed_approach=1).
             Use a single SQL query that matches month and day using a date format.
-            Example: If the user asks for "July 25", find all rows with request_start_date matching 07-25 in any year ? {year}.
+            Example: If the user asks for "July 25", find all rows with request_start_date matching 07-25 in any year ≥ {year}.
             If only one year contains confirmed requests on that date, proceed with that year.
             If multiple years contain that date, respond:
             "Requests for that date exist in multiple years: YYYY, YYYY, ... Could you clarify which year you meant?" **
